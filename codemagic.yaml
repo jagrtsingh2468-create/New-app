@@ -1,0 +1,111 @@
+workflows:
+
+  # ============================================================
+  # MAIN WORKFLOW — use this one to build what you upload to
+  # Google Play. Produces a properly SIGNED .aab (Android App
+  # Bundle), which is what the Play Console requires.
+  # ============================================================
+  android-release:
+    name: Voice Changer - Play Store Release (AAB)
+    max_build_duration: 30
+    instance_type: mac_mini_m2
+    environment:
+      flutter: stable
+      android_signing:
+        # This name must exactly match the keystore reference name
+        # you create in Codemagic's website under:
+        # Team settings -> Code signing identities -> Android keystores
+        - voice_changer_release
+      vars:
+        PACKAGE_NAME: "com.studiochaos.voicechanger"
+    triggering:
+      events:
+        - push
+      branch_patterns:
+        - pattern: 'main'
+          include: true
+
+    scripts:
+      - name: Get Flutter packages
+        script: |
+          flutter pub get
+
+      - name: Generate launcher icons
+        script: |
+          dart run flutter_launcher_icons
+
+      - name: Write key.properties from Codemagic-managed keystore
+        script: |
+          # Codemagic injects these env vars automatically once you've
+          # attached the "voice_changer_release" keystore above — you never
+          # type a password into this file yourself.
+          cat > android/key.properties <<EOF
+          storePassword=$CM_KEYSTORE_PASSWORD
+          keyPassword=$CM_KEY_PASSWORD
+          keyAlias=$CM_KEY_ALIAS
+          storeFile=$CM_KEYSTORE_PATH
+          EOF
+
+      - name: Build signed release App Bundle
+        script: |
+          flutter build appbundle --release
+
+    artifacts:
+      - build/app/outputs/bundle/release/*.aab
+      - build/app/outputs/mapping.txt
+
+    publishing:
+      email:
+        recipients: []   # add your email here to get notified when the build finishes
+        notify:
+          success: true
+          failure: true
+
+      # Optional: once you're ready for hands-free publishing, create a
+      # Google Play service account JSON, upload it in Codemagic under
+      # Team settings -> Integrations -> Google Play, then uncomment below.
+      # google_play:
+      #   credentials: $GCLOUD_SERVICE_ACCOUNT_CREDENTIALS
+      #   track: internal   # start on "internal" testing track, promote later
+      #   submit_as_draft: true
+
+  # ============================================================
+  # QUICK TEST WORKFLOW — builds an installable APK signed with
+  # Flutter's debug key. Good for trying the app on your own
+  # phone. NOT valid for Play Store upload.
+  # ============================================================
+  android-apk-debug:
+    name: Voice Changer - Quick Test APK
+    max_build_duration: 30
+    instance_type: mac_mini_m2
+    environment:
+      flutter: stable
+    triggering:
+      events:
+        - push
+      branch_patterns:
+        - pattern: 'main'
+          include: true
+
+    scripts:
+      - name: Get Flutter packages
+        script: |
+          flutter pub get
+
+      - name: Generate launcher icons
+        script: |
+          dart run flutter_launcher_icons
+
+      - name: Build debug-signed release APK
+        script: |
+          flutter build apk --release --split-per-abi
+
+    artifacts:
+      - build/app/outputs/flutter-apk/*.apk
+
+    publishing:
+      email:
+        recipients: []
+        notify:
+          success: true
+          failure: true
